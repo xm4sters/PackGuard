@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "packguard",
+  "version": "1.0",
+  "name": "PackGuard",
+  "description": "Blocks native TrueType input and restricts child processes on Windows.",
+  "environment": "client",
+  "entrypoints": {
+    "preLaunch": ["pl.mtsit.packguard.PackGuardStartup"]
+  },
+  "mixins": ["packguard.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.20.1",
+    "minecraft": ">=1.20 <=26.3",
+    "java": ">=17"
+  }
+}
