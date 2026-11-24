@@ -1,4 +1,4 @@
-package pl.mtsit.packguard;
+package pl.mtsit.packguard.history;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -13,9 +13,9 @@ import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import net.fabricmc.loader.api.FabricLoader;
+import pl.mtsit.packguard.loader.PackGuardPlatform;
 
-final class BlockHistory {
+public final class BlockHistory {
     private static final long MAX_BYTES = 256 * 1024;
     private static final int MAX_RECENT = 256;
     private static final long WINDOW = TimeUnit.SECONDS.toNanos(10);
@@ -30,19 +30,19 @@ final class BlockHistory {
 
     private BlockHistory() {}
 
-    static String archiveId(Path archive) {
+    public static String archiveId(Path archive) {
         Path filename = archive.getFileName();
         String value = filename == null ? "" : filename.toString();
         return value.isEmpty() ? "unknown" : UUID.nameUUIDFromBytes(value.getBytes(StandardCharsets.UTF_8)).toString();
     }
 
-    static boolean record(String kind, String archive, String reason) {
+    public static boolean record(String kind, String archive, String reason) {
         Event event = new Event(kind, archive, reason);
         if (!firstRecent(event, System.nanoTime())) return false;
         Instant time = Instant.now();
         WRITER.execute(() -> {
             try {
-                Path directory = FabricLoader.getInstance().getGameDir().resolve("logs");
+                Path directory = PackGuardPlatform.gameDirectory().resolve("logs");
                 append(directory, time + "\t" + kind + "\t" + archive + "\t" + reason + "\n");
             } catch (IOException | RuntimeException failure) {
                 LOGGER.log(System.Logger.Level.WARNING, "Could not write PackGuard history: " + failure.getClass().getSimpleName());

@@ -1,4 +1,4 @@
-package pl.mtsit.packguard;
+package pl.mtsit.packguard.font;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;

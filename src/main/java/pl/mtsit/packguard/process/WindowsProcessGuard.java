@@ -1,4 +1,4 @@
-package pl.mtsit.packguard;
+package pl.mtsit.packguard.process;
 
 import com.sun.jna.Native;
 import com.sun.jna.Platform;
@@ -13,7 +13,7 @@ public final class WindowsProcessGuard {
 
     private WindowsProcessGuard() {}
 
-    static void install() {
+    public static void install() {
         if (!Platform.isWindows()) return;
         restrictCurrentProcess();
         System.out.println("[PackGuard] Windows child-process limit active");

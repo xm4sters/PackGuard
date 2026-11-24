@@ -1,8 +1,7 @@
-package pl.mtsit.packguard;
+package pl.mtsit.packguard.loader;
 
 import java.util.List;
 import java.util.Set;
-import net.fabricmc.loader.api.FabricLoader;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
@@ -26,6 +25,9 @@ public final class PackGuardMixinConfig implements IMixinConfigPlugin {
     private static final String MODERN = "net.minecraft.client.gui.font.providers.TrueTypeGlyphProviderDefinition";
     private static final String MARKER = "packguard$verifiedTrueTypeBlock";
 
+    private static final String ARCHIVE_MARKER = "packguard$verifiedArchiveBlock";
+    private static volatile String archiveTarget;
+
     public void onLoad(String name) {}
     public String getRefMapperConfig() { return null; }
     public boolean shouldApplyMixin(String target, String mixin) { return true; }
@@ -33,7 +35,8 @@ public final class PackGuardMixinConfig implements IMixinConfigPlugin {
     public void preApply(String target, ClassNode node, String mixin, IMixinInfo info) {}
 
     public List<String> getMixins() {
-        boolean legacy = usesIntermediary();
+        if (!PackGuardPlatform.client()) return List.of();
+        boolean legacy = PackGuardPlatform.intermediary();
         String target = providerClass();
         try {
             MixinService.getService().getBytecodeProvider().getClassNode(target);
@@ -41,13 +44,16 @@ public final class PackGuardMixinConfig implements IMixinConfigPlugin {
             throw new IllegalStateException("PackGuard cannot verify the TrueType provider for this Minecraft version", failure);
         }
         String fontMixin = legacy ? "IntermediaryFontProvider" : "MojangFontProvider";
-        if (legacy) {
+        archiveTarget = legacy ? "net.minecraft.class_3521" : "net.minecraft.util.HttpUtil";
+        if (legacy || PackGuardPlatform.forge()) {
             try {
-                ClassNode http = MixinService.getService().getBytecodeProvider().getClassNode("net.minecraft.class_3521");
+                ClassNode http = MixinService.getService().getBytecodeProvider().getClassNode(archiveTarget);
                 if (http.methods.stream().noneMatch(PackGuardMixinConfig::isPackDownload)) {
-                    ClassNode packs = MixinService.getService().getBytecodeProvider().getClassNode("net.minecraft.class_1066");
-                    legacyPackApplication(packs, "method_4634", "method_4638");
-                    return List.of(fontMixin, "LegacyServerPack");
+                    String source = legacy ? "net.minecraft.class_1066" : "net.minecraft.client.resources.DownloadedPackSource";
+                    ClassNode packs = MixinService.getService().getBytecodeProvider().getClassNode(source);
+                    legacyContinuationCall(packs, legacyPackApplication(packs));
+                    archiveTarget = source;
+                    return List.of(fontMixin, legacy ? "LegacyServerPack" : "ForgeLegacyServerPack");
                 }
             } catch (Exception failure) {
                 throw new IllegalStateException("PackGuard cannot inspect the resource pack downloader", failure);
@@ -60,56 +66,64 @@ public final class PackGuardMixinConfig implements IMixinConfigPlugin {
         try {
             Class<?> provider = Class.forName(providerClass(), false, PackGuardMixinConfig.class.getClassLoader());
             if (provider.getDeclaredField(MARKER).getType() != boolean.class)
-                throw new IllegalStateException("PackGuard marker has an unexpected type");
+                throw new IllegalStateException("PackGuard font marker has an unexpected type");
+            String archive = archiveTarget;
+            if (archive == null || Class.forName(archive, false, PackGuardMixinConfig.class.getClassLoader())
+                    .getDeclaredField(ARCHIVE_MARKER).getType() != boolean.class)
+                throw new IllegalStateException("PackGuard cannot verify server archive protection");
         } catch (ClassNotFoundException | NoSuchFieldException failure) {
-            throw new IllegalStateException("PackGuard could not confirm TrueType protection. Minecraft startup stopped.", failure);
+            throw new IllegalStateException("PackGuard could not confirm resource pack protection. Minecraft startup stopped.", failure);
         }
     }
 
-    private static boolean usesIntermediary() {
-        return FabricLoader.getInstance().getMappingResolver().getCurrentRuntimeNamespace().equals("intermediary");
-    }
 
     private static String providerClass() {
-        return usesIntermediary() ? LEGACY : MODERN;
+        return PackGuardPlatform.intermediary() ? LEGACY : MODERN;
     }
 
     public void postApply(String target, ClassNode node, String mixin, IMixinInfo info) {
         if (mixin.endsWith("LegacyServerPack")) {
-            applyLegacyArchivePolicy(node, "method_4634", "method_4638");
+            applyLegacyArchivePolicy(node);
+            markArchivePolicy(node);
             return;
         }
         if (mixin.endsWith("PackDownload")) {
             applyArchivePolicy(node);
+            markArchivePolicy(node);
             return;
         }
         applyFontPolicy(node);
         System.out.println("[PackGuard] Minecraft TrueType provider disabled");
     }
 
-    static void applyLegacyArchivePolicy(ClassNode node, String continuation, String application) {
-        MethodNode method = legacyPackApplication(node, continuation, application);
+    private static void markArchivePolicy(ClassNode node) {
+        node.fields.add(new FieldNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL | Opcodes.ACC_SYNTHETIC,
+                ARCHIVE_MARKER, "Z", null, 1));
+        System.out.println("[PackGuard] Server archive validation active");
+    }
+
+    static void applyLegacyArchivePolicy(ClassNode node) {
+        MethodNode method = legacyPackApplication(node);
         legacyContinuationCall(node, method).name = "thenComposeAsync";
         method.maxStack++;
         for (AbstractInsnNode instruction : method.instructions.toArray()) {
-            if (!isLegacyApplication(node, instruction, application)) continue;
+            if (!isLegacyApplication(node, instruction)) continue;
             InsnList validation = new InsnList();
             validation.add(new VarInsnNode(Opcodes.ALOAD, 2));
-            validation.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "pl/mtsit/packguard/PackArchivePolicy",
+            validation.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "pl/mtsit/packguard/archive/PackArchivePolicy",
                     "validateLegacy", "(Ljava/io/File;)V", false));
             method.instructions.insertBefore(instruction, validation);
         }
     }
 
-    private static MethodNode legacyPackApplication(ClassNode node, String continuation, String application) {
+    private static MethodNode legacyPackApplication(ClassNode node) {
         return node.methods.stream()
-                .filter(method -> method.name.equals(continuation)
-                        && (method.access & Opcodes.ACC_STATIC) == 0
+                .filter(method -> (method.access & Opcodes.ACC_STATIC) == 0
                         && method.desc.startsWith("(Ljava/lang/String;Ljava/io/File;L")
                         && method.desc.endsWith(";ZLjava/lang/Object;)Ljava/util/concurrent/CompletionStage;"))
                 .filter(method -> {
                     for (AbstractInsnNode instruction : method.instructions) {
-                        if (isLegacyApplication(node, instruction, application)) return true;
+                        if (isLegacyApplication(node, instruction)) return true;
                     }
                     return false;
                 })
@@ -140,9 +154,9 @@ public final class PackGuardMixinConfig implements IMixinConfigPlugin {
         throw new IllegalStateException("PackGuard could not locate the legacy download continuation");
     }
 
-    private static boolean isLegacyApplication(ClassNode node, AbstractInsnNode instruction, String application) {
+    private static boolean isLegacyApplication(ClassNode node, AbstractInsnNode instruction) {
         return instruction instanceof MethodInsnNode call && call.owner.equals(node.name)
-                && call.name.equals(application) && call.desc.startsWith("(Ljava/io/File;L")
+                && call.desc.startsWith("(Ljava/io/File;L")
                 && call.desc.endsWith(";)Ljava/util/concurrent/CompletableFuture;");
     }
 
@@ -153,7 +167,7 @@ public final class PackGuardMixinConfig implements IMixinConfigPlugin {
             if (instruction.getOpcode() != Opcodes.ARETURN) continue;
             InsnList validation = new InsnList();
             validation.add(new VarInsnNode(Opcodes.ILOAD, 5));
-            validation.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "pl/mtsit/packguard/PackArchivePolicy",
+            validation.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "pl/mtsit/packguard/archive/PackArchivePolicy",
                     "validate", "(Ljava/nio/file/Path;I)Ljava/nio/file/Path;", false));
             download.instructions.insertBefore(instruction, validation);
         }
@@ -192,7 +206,7 @@ public final class PackGuardMixinConfig implements IMixinConfigPlugin {
         Type provider = Type.getReturnType(method.desc);
         if (provider.getSort() != Type.OBJECT) throw new IllegalStateException("Unsupported PackGuard font result");
         body.add(new LdcInsnNode(provider));
-        body.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "pl/mtsit/packguard/BlockedFontProvider",
+        body.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "pl/mtsit/packguard/font/BlockedFontProvider",
                 "empty", "(Ljava/lang/Class;)Ljava/lang/Object;", false));
         body.add(new TypeInsnNode(Opcodes.CHECKCAST, provider.getInternalName()));
         body.add(new InsnNode(Opcodes.ARETURN));

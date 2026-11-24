@@ -1,0 +1,18 @@
+modLoader="javafml"
+loaderVersion="[46,)"
+license="All Rights Reserved"
+clientSideOnly=true
+
+[[mods]]
+modId="packguard"
+version="@VERSION@"
+displayName="PackGuard"
+description="Blocks native TrueType input and validates server resource pack ZIPs."
+displayTest="IGNORE_ALL_VERSION"
+
+[[dependencies.packguard]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.20,26.3]"
+ordering="NONE"
+side="CLIENT"

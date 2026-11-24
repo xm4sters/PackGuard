@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
   "id": "packguard",
-  "version": "1.0",
+  "version": "1.1",
   "name": "PackGuard",
-  "description": "Blocks native TrueType input and restricts child processes on Windows.",
+  "description": "Blocks native TrueType input and validates server resource pack ZIPs.",
   "environment": "client",
   "entrypoints": {
-    "preLaunch": ["pl.mtsit.packguard.PackGuardStartup"]
+    "preLaunch": ["pl.mtsit.packguard.loader.PackGuardStartup"]
   },
   "mixins": ["packguard.mixins.json"],
   "depends": {

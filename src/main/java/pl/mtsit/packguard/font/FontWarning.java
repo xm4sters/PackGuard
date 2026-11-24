@@ -1,8 +1,9 @@
-package pl.mtsit.packguard;
+package pl.mtsit.packguard.font;
 
 import java.lang.reflect.Method;
 import java.util.concurrent.Executor;
-import net.fabricmc.loader.api.FabricLoader;
+import pl.mtsit.packguard.history.BlockHistory;
+import pl.mtsit.packguard.loader.PackGuardPlatform;
 
 public final class FontWarning {
     private static final System.Logger LOGGER = System.getLogger("PackGuard");
@@ -15,7 +16,7 @@ public final class FontWarning {
         warn("PackGuard: font blocked", "A resource pack uses TrueType. Minecraft skipped the font for safety.");
     }
 
-    static void archiveBlocked(String archive, String reason) {
+    public static void archiveBlocked(String archive, String reason) {
         if (!BlockHistory.record("server-zip", archive, reason)) return;
         warn("PackGuard: resource pack blocked", "The server ZIP failed safety checks.");
     }
@@ -23,10 +24,9 @@ public final class FontWarning {
     private static void warn(String title, String description) {
         LOGGER.log(System.Logger.Level.WARNING, title);
         try {
-            boolean intermediary = FabricLoader.getInstance().getMappingResolver()
-                    .getCurrentRuntimeNamespace().equals("intermediary");
+            boolean intermediary = PackGuardPlatform.intermediary();
             Class<?> minecraft = gameClass(intermediary, "class_310", "client.Minecraft");
-            Object client = minecraft.getMethod(intermediary ? "method_1551" : "getInstance").invoke(null);
+            Object client = mappedMethod(minecraft, intermediary ? "method_1551" : "getInstance", "m_91087_").invoke(null);
             if (client instanceof Executor executor) {
                 executor.execute(() -> show(client, intermediary, title, description));
             }
@@ -39,17 +39,36 @@ public final class FontWarning {
         try {
             Class<?> component = gameClass(intermediary, "class_2561", "network.chat.Component");
             Class<?> toast = gameClass(intermediary, "class_370", "client.gui.components.toasts.SystemToast");
-            Class<?> manager = gameClass(intermediary, "class_374", "client.gui.components.toasts.ToastManager");
+
             Object toasts = toastManager(client, intermediary);
-            Method literal = component.getMethod(intermediary ? "method_43470" : "literal", String.class);
+            Method literal = mappedMethod(component, intermediary ? "method_43470" : "literal", "m_237113_", String.class);
             Object toastTitle = literal.invoke(null, title);
             Object toastDescription = literal.invoke(null, description);
-            Class<?> id = intermediary ? legacyToastId() : gameClass(false, "", "client.gui.components.toasts.SystemToast$SystemToastId");
-            Object token = intermediary && id.isEnum() ? id.getField("field_2218").get(null) : id.getConstructor().newInstance();
-            toast.getMethod(intermediary ? "method_27024" : "addOrUpdate", manager, id, component, component)
+            Class<?> id = intermediary ? legacyToastId() : namedToastId();
+            Object token = id.isEnum() ? id.getField(intermediary ? "field_2218" : "PACK_LOAD_FAILURE").get(null) : id.getConstructor().newInstance();
+            mappedMethod(toast, intermediary ? "method_27024" : "addOrUpdate", "m_94869_", toasts.getClass(), id, component, component)
                     .invoke(null, toasts, token, toastTitle, toastDescription);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError failure) {
             logUnavailable(failure);
+        }
+    }
+
+    private static Method mappedMethod(Class<?> type, String name, String srg, Class<?>... parameters)
+            throws NoSuchMethodException {
+        try {
+            return type.getMethod(name, parameters);
+        } catch (NoSuchMethodException missing) {
+            if (!PackGuardPlatform.forge()) throw missing;
+            return type.getMethod(srg, parameters);
+        }
+    }
+
+    private static Class<?> namedToastId() throws ClassNotFoundException {
+        try {
+            return gameClass(false, "", "client.gui.components.toasts.SystemToast$SystemToastId");
+        } catch (ClassNotFoundException missing) {
+            if (!PackGuardPlatform.forge()) throw missing;
+            return gameClass(false, "", "client.gui.components.toasts.SystemToast$SystemToastIds");
         }
     }
 
@@ -65,7 +84,7 @@ public final class FontWarning {
         if (intermediary) return client.getClass().getMethod("method_1566").invoke(client);
 
         try {
-            return client.getClass().getMethod("getToastManager").invoke(client);
+            return mappedMethod(client.getClass(), "getToastManager", "m_91300_").invoke(client);
         } catch (NoSuchMethodException movedToGui) {
             Object gui = client.getClass().getField("gui").get(client);
             return gui.getClass().getMethod("toastManager").invoke(gui);

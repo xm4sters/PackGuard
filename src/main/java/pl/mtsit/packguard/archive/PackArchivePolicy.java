@@ -1,4 +1,4 @@
-package pl.mtsit.packguard;
+package pl.mtsit.packguard.archive;
 
 import java.io.File;
 import java.io.IOException;
@@ -14,6 +14,8 @@ import java.util.Set;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
+import pl.mtsit.packguard.font.FontWarning;
+import pl.mtsit.packguard.history.BlockHistory;
 
 public final class PackArchivePolicy {
     private static final int MAX_ENTRIES = 100_000;

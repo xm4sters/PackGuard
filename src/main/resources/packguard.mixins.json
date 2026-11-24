@@ -3,5 +3,5 @@
   "minVersion": "0.8",
   "package": "pl.mtsit.packguard.mixin",
   "compatibilityLevel": "JAVA_17",
-  "plugin": "pl.mtsit.packguard.PackGuardMixinConfig"
+  "plugin": "pl.mtsit.packguard.loader.PackGuardMixinConfig"
 }
