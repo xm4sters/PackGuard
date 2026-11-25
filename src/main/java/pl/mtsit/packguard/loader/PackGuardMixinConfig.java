@@ -185,6 +185,7 @@ public final class PackGuardMixinConfig implements IMixinConfigPlugin {
     static void applyArchivePolicy(ClassNode node) {
         MethodNode download = node.methods.stream().filter(method -> isPackDownload(method))
                 .findFirst().orElseThrow(() -> new IllegalStateException("PackGuard could not locate the resource pack downloader"));
+        boolean validated = false;
         for (AbstractInsnNode instruction : download.instructions.toArray()) {
             if (instruction.getOpcode() != Opcodes.ARETURN) continue;
             InsnList validation = new InsnList();
@@ -192,7 +193,9 @@ public final class PackGuardMixinConfig implements IMixinConfigPlugin {
             validation.add(new MethodInsnNode(Opcodes.INVOKESTATIC, Type.getInternalName(PackArchivePolicy.class),
                     "validate", Type.getMethodDescriptor(Type.getType(Path.class), Type.getType(Path.class), Type.INT_TYPE), false));
             download.instructions.insertBefore(instruction, validation);
+            validated = true;
         }
+        if (!validated) throw new IllegalStateException("PackGuard found no resource pack download return");
         download.maxStack = Math.max(2, download.maxStack);
     }
 
