@@ -18,10 +18,6 @@ import pl.mtsit.packguard.font.FontWarning;
 import pl.mtsit.packguard.history.BlockHistory;
 
 public final class PackArchivePolicy {
-    private static final int MAX_ENTRIES = 100_000;
-    private static final long MAX_ENTRY_BYTES = 64L << 20;
-    private static final long MAX_EXPANDED_BYTES = 1L << 30;
-    private static final long MAX_SCAN_NANOS = 30_000_000_000L;
 
     private PackArchivePolicy() {}
 
@@ -42,6 +38,10 @@ public final class PackArchivePolicy {
     }
 
     static void scan(Path path, int maxBytes) throws IOException {
+        final int maxEntries = 100_000;
+        final long maxEntryBytes = 64L << 20;
+        final long maxExpandedBytes = 1L << 30;
+        final long maxScanNanos = 30_000_000_000L;
         long started = System.nanoTime();
         if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) || Files.size(path) > maxBytes) throw new ArchiveViolation("file-type-or-download-limit");
         Set<String> names = new HashSet<>();
@@ -50,7 +50,7 @@ public final class PackArchivePolicy {
         long total = 0;
         boolean metadata = false;
         try (ZipFile zip = new ZipFile(path.toFile())) {
-            if (zip.size() > MAX_ENTRIES) throw new ArchiveViolation("entry-count-limit");
+            if (zip.size() > maxEntries) throw new ArchiveViolation("entry-count-limit");
             Enumeration<? extends ZipEntry> entries = zip.entries();
             while (entries.hasMoreElements()) {
                 ZipEntry entry = entries.nextElement();
@@ -60,24 +60,24 @@ public final class PackArchivePolicy {
                 long compressed = entry.getCompressedSize();
                 long declared = entry.getSize();
                 if (compressed < 0 || compressed > maxBytes) throw new ArchiveViolation("compressed-size-invalid");
-                long limit = Math.min(MAX_ENTRY_BYTES, Math.max(1, compressed) * 1000);
+                long limit = Math.min(maxEntryBytes, Math.max(1, compressed) * 1000);
                 if (name.equals("pack.mcmeta")) {
                     metadata = true;
                     limit = Math.min(limit, 1L << 20);
                 }
-                if (declared < 0 || declared > limit || declared > MAX_EXPANDED_BYTES - total) throw new ArchiveViolation("expanded-size-limit");
+                if (declared < 0 || declared > limit || declared > maxExpandedBytes - total) throw new ArchiveViolation("expanded-size-limit");
                 long size = 0;
                 crc.reset();
                 try (InputStream input = zip.getInputStream(entry)) {
                     int read;
                     while ((read = input.read(buffer)) != -1) {
                         size += read;
-                        if (size > declared || System.nanoTime() - started > MAX_SCAN_NANOS) throw new ArchiveViolation("entry-size-or-scan-time-limit");
+                        if (size > declared || System.nanoTime() - started > maxScanNanos) throw new ArchiveViolation("entry-size-or-scan-time-limit");
                         crc.update(buffer, 0, read);
                     }
                 }
                 if (size != declared || crc.getValue() != entry.getCrc()
-                        || System.nanoTime() - started > MAX_SCAN_NANOS) throw new ArchiveViolation("entry-integrity-or-scan-time-limit");
+                        || System.nanoTime() - started > maxScanNanos) throw new ArchiveViolation("entry-integrity-or-scan-time-limit");
                 total += size;
             }
         }

@@ -3,6 +3,7 @@ package pl.mtsit.packguard.font;
 import java.lang.reflect.Method;
 import java.util.concurrent.Executor;
 import pl.mtsit.packguard.history.BlockHistory;
+import pl.mtsit.packguard.loader.MinecraftMappings;
 import pl.mtsit.packguard.loader.PackGuardPlatform;
 
 public final class FontWarning {
@@ -25,7 +26,7 @@ public final class FontWarning {
         LOGGER.log(System.Logger.Level.WARNING, title);
         try {
             boolean intermediary = PackGuardPlatform.intermediary();
-            Class<?> minecraft = gameClass(intermediary, "class_310", "client.Minecraft");
+            Class<?> minecraft = MinecraftMappings.CLIENT.load(intermediary);
             Object client = mappedMethod(minecraft, intermediary ? "method_1551" : "getInstance", "m_91087_").invoke(null);
             if (client instanceof Executor executor) {
                 executor.execute(() -> show(client, intermediary, title, description));
@@ -37,14 +38,14 @@ public final class FontWarning {
 
     private static void show(Object client, boolean intermediary, String title, String description) {
         try {
-            Class<?> component = gameClass(intermediary, "class_2561", "network.chat.Component");
-            Class<?> toast = gameClass(intermediary, "class_370", "client.gui.components.toasts.SystemToast");
+            Class<?> component = MinecraftMappings.COMPONENT.load(intermediary);
+            Class<?> toast = MinecraftMappings.SYSTEM_TOAST.load(intermediary);
 
             Object toasts = toastManager(client, intermediary);
             Method literal = mappedMethod(component, intermediary ? "method_43470" : "literal", "m_237113_", String.class);
             Object toastTitle = literal.invoke(null, title);
             Object toastDescription = literal.invoke(null, description);
-            Class<?> id = intermediary ? legacyToastId() : namedToastId();
+            Class<?> id = toastId(intermediary);
             Object token = id.isEnum() ? id.getField(intermediary ? "field_2218" : "PACK_LOAD_FAILURE").get(null) : id.getConstructor().newInstance();
             mappedMethod(toast, intermediary ? "method_27024" : "addOrUpdate", "m_94869_", toasts.getClass(), id, component, component)
                     .invoke(null, toasts, token, toastTitle, toastDescription);
@@ -63,23 +64,14 @@ public final class FontWarning {
         }
     }
 
-    private static Class<?> namedToastId() throws ClassNotFoundException {
+    private static Class<?> toastId(boolean intermediary) throws ClassNotFoundException {
         try {
-            return gameClass(false, "", "client.gui.components.toasts.SystemToast$SystemToastId");
+            return MinecraftMappings.TOAST_ID.load(intermediary);
         } catch (ClassNotFoundException missing) {
-            if (!PackGuardPlatform.forge()) throw missing;
-            return gameClass(false, "", "client.gui.components.toasts.SystemToast$SystemToastIds");
+            if (!intermediary && !PackGuardPlatform.forge()) throw missing;
+            return MinecraftMappings.OLD_TOAST_ID.load(intermediary);
         }
     }
-
-    private static Class<?> legacyToastId() throws ClassNotFoundException {
-        try {
-            return gameClass(true, "class_370$class_9037", "");
-        } catch (ClassNotFoundException unavailable) {
-            return gameClass(true, "class_370$class_371", "");
-        }
-    }
-
     private static Object toastManager(Object client, boolean intermediary) throws ReflectiveOperationException {
         if (intermediary) return client.getClass().getMethod("method_1566").invoke(client);
 
@@ -89,10 +81,6 @@ public final class FontWarning {
             Object gui = client.getClass().getField("gui").get(client);
             return gui.getClass().getMethod("toastManager").invoke(gui);
         }
-    }
-
-    private static Class<?> gameClass(boolean intermediary, String legacy, String modern) throws ClassNotFoundException {
-        return Class.forName("net.minecraft." + (intermediary ? legacy : modern), false, FontWarning.class.getClassLoader());
     }
 
     private static void logUnavailable(Throwable failure) {

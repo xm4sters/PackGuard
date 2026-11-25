@@ -1,5 +1,7 @@
 package pl.mtsit.packguard.font;
 
+import it.unimi.dsi.fastutil.ints.IntSet;
+import it.unimi.dsi.fastutil.ints.IntSets;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
 
@@ -16,9 +18,8 @@ public final class BlockedFontProvider {
                     };
                 }
                 if (method.isDefault()) return InvocationHandler.invokeDefault(proxy, method, args);
-                if (method.getReturnType().getName().equals("it.unimi.dsi.fastutil.ints.IntSet")) {
-                    Class<?> sets = Class.forName("it.unimi.dsi.fastutil.ints.IntSets", true, type.getClassLoader());
-                    return sets.getField("EMPTY_SET").get(null);
+                if (method.getReturnType() == IntSet.class) {
+                    return IntSets.EMPTY_SET;
                 }
                 return null;
             });
