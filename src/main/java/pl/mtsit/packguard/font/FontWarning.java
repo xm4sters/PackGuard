@@ -1,6 +1,7 @@
 package pl.mtsit.packguard.font;
 
 import java.lang.reflect.Method;
+import java.nio.file.Path;
 import java.util.concurrent.Executor;
 import pl.mtsit.packguard.history.BlockHistory;
 import pl.mtsit.packguard.loader.MinecraftMappings;
@@ -20,6 +21,14 @@ public final class FontWarning {
     public static void archiveBlocked(String archive, String reason) {
         if (!BlockHistory.record("server-zip", archive, reason)) return;
         warn("PackGuard: resource pack blocked", "The server ZIP failed safety checks.");
+    }
+
+    public static void folderCopied() {
+        warn("PackGuard: pack folder", "Path copied. Paste it into File Explorer.");
+    }
+
+    public static void folderUnavailable(Path directory) {
+        warn("PackGuard: pack folder", directory.toString());
     }
 
     private static void warn(String title, String description) {

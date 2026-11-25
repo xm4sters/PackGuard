@@ -2,6 +2,7 @@ package pl.mtsit.packguard.loader;
 
 public enum MinecraftMappings {
     TRUE_TYPE("net.minecraft.class_8557", "net.minecraft.client.gui.font.providers.TrueTypeGlyphProviderDefinition"),
+    PACK_SCREEN("", "net.minecraft.client.gui.screens.packs.PackSelectionScreen"),
     HTTP("net.minecraft.class_3521", "net.minecraft.util.HttpUtil"),
     DOWNLOADED_PACK("net.minecraft.class_1066", "net.minecraft.client.resources.DownloadedPackSource"),
     CLIENT("net.minecraft.class_310", "net.minecraft.client.Minecraft"),

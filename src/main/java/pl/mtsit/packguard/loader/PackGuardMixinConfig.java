@@ -1,6 +1,7 @@
 package pl.mtsit.packguard.loader;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.Proxy;
 import java.net.URL;
 import java.nio.file.Path;
@@ -69,7 +70,45 @@ public final class PackGuardMixinConfig implements IMixinConfigPlugin {
                 throw new IllegalStateException("PackGuard cannot inspect the resource pack downloader", failure);
             }
         }
-        return List.of(fontMixin, intermediary ? "IntermediaryPackDownload" : "MojangPackDownload");
+        String archiveMixin = intermediary ? "IntermediaryPackDownload" : "MojangPackDownload";
+        if (!intermediary && System.getProperty("os.name", "").startsWith("Windows") && usesProcessFolderAction()) {
+            return List.of(fontMixin, archiveMixin, "PackFolder");
+        }
+        return List.of(fontMixin, archiveMixin);
+    }
+
+    private static boolean usesProcessFolderAction() {
+        try {
+            ClassNode screen = MixinService.getService().getBytecodeProvider()
+                    .getClassNode(MinecraftMappings.PACK_SCREEN.className(false));
+            for (MethodNode method : screen.methods) {
+                for (AbstractInsnNode instruction : method.instructions) {
+                    if (isPackFolderOpen(instruction)) return true;
+                }
+            }
+            return false;
+        } catch (ClassNotFoundException | IOException unavailable) {
+            return false;
+        }
+    }
+
+    private static boolean isPackFolderOpen(AbstractInsnNode instruction) {
+        return instruction instanceof MethodInsnNode call
+                && call.getOpcode() == Opcodes.INVOKEVIRTUAL
+                && call.owner.equals("net/minecraft/util/Util$OS")
+                && call.name.equals("openPath")
+                && call.desc.equals(Type.getMethodDescriptor(Type.VOID_TYPE, Type.getType(Path.class)));
+    }
+
+    private static void replacePackFolderAction(ClassNode screen) {
+        for (MethodNode method : screen.methods) {
+            for (AbstractInsnNode instruction : method.instructions.toArray()) {
+                if (!isPackFolderOpen(instruction)) continue;
+                method.instructions.insertBefore(instruction, new InsnNode(Opcodes.POP2));
+                method.instructions.set(instruction, new MethodInsnNode(Opcodes.INVOKESTATIC,
+                        Type.getInternalName(PackFolderAction.class), "open", Type.getMethodDescriptor(Type.VOID_TYPE), false));
+            }
+        }
     }
 
     static void verifyInstalled() {
@@ -92,6 +131,10 @@ public final class PackGuardMixinConfig implements IMixinConfigPlugin {
     }
 
     public void postApply(String target, ClassNode node, String mixin, IMixinInfo info) {
+        if (mixin.endsWith(".PackFolder")) {
+            replacePackFolderAction(node);
+            return;
+        }
         if (mixin.endsWith("LegacyServerPack")) {
             applyLegacyArchivePolicy(node);
             markArchivePolicy(node);
